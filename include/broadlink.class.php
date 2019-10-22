@@ -2,11 +2,11 @@
 date_default_timezone_set("Asia/Taipei");
 
 function aes128_cbc_encrypt($key, $data, $iv) {
-  return mcrypt_encrypt(MCRYPT_RIJNDAEL_128, $key, $data, MCRYPT_MODE_CBC, $iv);
+  return openssl_encrypt($data, "aes-128-cbc", $key, OPENSSL_RAW_DATA|OPENSSL_ZERO_PADDING, $iv);
 }
 
 function aes128_cbc_decrypt($key, $data, $iv) {
-  return mcrypt_decrypt(MCRYPT_RIJNDAEL_128, $key, $data, MCRYPT_MODE_CBC, $iv);
+  return openssl_decrypt($data, "aes-128-cbc", $key, OPENSSL_RAW_DATA|OPENSSL_ZERO_PADDING, $iv);
 }
 
 class Broadlink{
@@ -66,9 +66,6 @@ class Broadlink{
                 break;    
             case 3:
                 return new A1($h, $m, $p, $d);
-                break;
-            case 4:
-                return new MP1($h, $m, $p, $d);
                 break;
             default:
         } 
@@ -151,7 +148,10 @@ class Broadlink{
     		case 0x2712: 
     			$type = "RM2";
     			break;
-    		case 0x2737: 
+    		case 0x27c2:   //RM Mini 3
+	                $type = "RM Mini 3";
+                        break;
+		case 0x2737:
     			$type = "RM Mini";
     			break;
     		case 0x273d: 
@@ -180,10 +180,7 @@ class Broadlink{
     			break;
     		case 0x2714: 
     			$type = "A1";
-    			break;
-            case 0x4EB5: 
-                $type = "MP1";
-                break;    
+    			break;	
     		default:
     			break;
     	}
@@ -233,7 +230,8 @@ class Broadlink{
     		case 0x2712: 
     			$type = 2;
     			break;
-    		case 0x2737: 
+    		case 0x27c2:   //RM Mini 3
+		case 0x2737: 
     			$type = 2;
     			break;
     		case 0x273d: 
@@ -262,10 +260,7 @@ class Broadlink{
     			break;
     		case 0x2714: 
     			$type = 3;
-    			break;
-            case 0x4EB5: 
-                $type = 4;
-                break;      
+    			break;	
     		default:
     			break;
     	}
@@ -758,89 +753,4 @@ class RM extends Broadlink{
     }
 
 }
-
-class MP1 extends Broadlink{
-
-    function __construct($h = "", $m = "", $p = 80, $d = 0x4EB5) {
-
-         parent::__construct($h, $m, $p, $d);
-
-    }
-
-    public function Set_Power_Mask($sid_mask, $state){
-
-        $packet = self::bytearray(16);
-        $packet[0x00] = 0x0d;
-        $packet[0x02] = 0xa5;
-        $packet[0x03] = 0xa5;
-        $packet[0x04] = 0x5a;
-        $packet[0x05] = 0x5a;
-        $packet[0x06] = 0xb2 + ($state ? ($sid_mask<<1) : $sid_mask);
-        $packet[0x07] = 0xc0;
-        $packet[0x08] = 0x02;
-        $packet[0x0a] = 0x03;
-        $packet[0x0d] = $sid_mask;
-        $packet[0x0e] = $state ? $sid_mask : 0;
-
-        $this->send_packet(0x6a, $packet);
-    }
-
-    public function Set_Power($sid, $state){
-
-        $sid_mask = 0x01 << ($sid - 1);
-
-        $this->Set_Power_Mask($sid_mask, $state);
-    }
-
-    public function Check_Power_Raw(){
-
-        $packet = self::bytearray(16);
-        $packet[0x00] = 0x0a;
-        $packet[0x02] = 0xa5;
-        $packet[0x03] = 0xa5;
-        $packet[0x04] = 0x5a;
-        $packet[0x05] = 0x5a;
-        $packet[0x06] = 0xae;
-        $packet[0x07] = 0xc0;
-        $packet[0x08] = 0x01;
-
-        $response = $this->send_packet(0x6a, $packet);
-        $err = hexdec(sprintf("%x%x", $response[0x23], $response[0x22]));
-        
-
-        if($err == 0){
-            $enc_payload = array_slice($response, 0x38);
-
-            if(count($enc_payload) > 0){
-
-                $payload = $this->byte2array(aes128_cbc_decrypt($this->key(), $this->byte($enc_payload), $this->iv()));
-                return $payload[0x0e];    
-            }
-
-        }
-
-        return false;
-
-        
-    }
-
-    public function Check_Power(){
-
-        $data = array();
-
-        if($state = $this->Check_Power_Raw()){
-
-            $data[0] = bool($state & 0x01);
-            $data[1] = bool($state & 0x02);
-            $data[2] = bool($state & 0x04);
-            $data[3] = bool($state & 0x08);
-
-        }
-
-        return $data;
-
-    }  
-
-}
-
 ?>
